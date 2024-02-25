@@ -23,6 +23,7 @@
                         <th>Name</th>
                         <th>Quantity</th>
                         <th>Price</th>
+                        <th>Image</th>
                         <th>Action</th>
                     </tr>
                 </thead>
@@ -33,6 +34,7 @@
                             <td><%= items[i].tenSP %></td>
                             <td><%= items[i].soLuong %></td>
                             <td><%= items[i].donGia %></td>
+                            <td><img src="<%= items[i].image %>" alt="avt_<%= items[i].maSP %>" width="64" height="64" /></td>
                             <td>
                                 <input type="checkbox" name="<%= items[i].maSP %>">
                             </td>

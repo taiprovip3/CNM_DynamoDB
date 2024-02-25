@@ -1,0 +1,22 @@
+filePath= 189b8e15-8c2c-4447-8c92-d1717fa6b3081708857589765.jpg
+s3-data-after-upload-success= {
+  ETag: '"a27a3f5b0671b25d40d2f63d50681e97"',
+  ServerSideEncryption: 'AES256',
+  Location: 'https://phantantai-s3.s3.ap-southeast-1.amazonaws.com/189b8e15-8c2c-4447-8c92-d1717fa6b3081708857589765.jpg',
+  key: '189b8e15-8c2c-4447-8c92-d1717fa6b3081708857589765.jpg',
+  Key: '189b8e15-8c2c-4447-8c92-d1717fa6b3081708857589765.jpg',
+  Bucket: 'phantantai-s3'
+}
+
+{
+  "Version":"2012-10-17",
+  "Statement":[
+    {
+      "Sid":"PublicRead",
+      "Effect":"Allow",
+      "Principal": "*",
+      "Action":["s3:GetObject"],
+      "Resource":["arn:aws:s3:::examplebucket/*"]
+    }
+  ]
+}

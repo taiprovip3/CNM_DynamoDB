@@ -15,64 +15,77 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.set('view engine', 'ejs');
 app.set('views', __dirname + '/views');
-const upload = multer();
+const storage = multer.memoryStorage({
+    destination(req, file, callback) {
+        callback(null, '');
+    },
+});
+const upload = multer({
+    storage,
+    limits: {fileSize: 2000000}, // 2MB
+    fileFilter(req, file, cb) {
+        checkFileType(file, cb);
+    },
+});
 
 // Cấu hình AWS
 AWS.config.update({
-    region: 'ap-southeast-1',
-    accessKeyId: 'fakeAccessKeyId',
-    secretAccessKey: 'fakeSecretAccessKey',
-    endpoint: 'http://localhost:8000',
+    region: process.env.REGION,
+    accessKeyId: process.env.ACCESS_KEY_ID,
+    secretAccessKey: process.env.SECRET_ACCESS_KEY,
+    // endpoint: 'http://localhost:8000',
 });
 
-// Khởi tạo bảng dynamodb
+// Khởi tạo bảng dynamodb, s3
+const s3 = new AWS.S3();
 const docClient = new AWS.DynamoDB.DocumentClient();
 const dynamodb = new AWS.DynamoDB();
 const tableName = 'Products';
-const attributeDefinitions = [{AttributeName: 'maSP', AttributeType: 'S'}];
-const createTableParams = {
-    AttributeDefinitions: attributeDefinitions,
-    KeySchema: [{AttributeName: 'maSP', KeyType: 'HASH'}],
-    ProvisionedThroughput: {
-        ReadCapacityUnits: 5,
-        WriteCapacityUnits: 5,
-    },
-    TableName: tableName,
-};
-dynamodb.describeTable({ TableName: tableName }, (err, data) => {
-    if(err && err.code === 'ResourceNotFoundException') {
-        dynamodb.createTable(createTableParams, (err, data) => {
-            if(err) {
-                console.error('Unable to create table');
-            } else {
-                console.log('Created table');
-                const maSP = uuidv4();
-                const putItemParams = {
-                    TableName: tableName,
-                    Item: {
-                      'maSP': { S: maSP },
-                      'tenSP': { S: 'Nồi Cơm Điện Sunhouse' },
-                      'soLuong': { N: '10' },
-                      'donGia': { N: '8850000' }
-                    }
-                };
-                dynamodb.putItem(putItemParams, (err, data) => {
-                    if (err) {
-                      console.error('Unable to add item. Error JSON:', JSON.stringify(err, null, 2));
-                    } else {
-                      console.log('Added item. Item description JSON:', JSON.stringify(data, null, 2));
-                    }
-                });
-            }
-        });
-    } else {
-        if (err) {
-            console.error('Error describing table.');
-        } else {
-            console.log('Table already exists.');
-        }
-    }
-});
+// const attributeDefinitions = [{AttributeName: 'maSP', AttributeType: 'S'}];
+// const createTableParams = {
+//     AttributeDefinitions: attributeDefinitions,
+//     KeySchema: [{AttributeName: 'maSP', KeyType: 'HASH'}],
+//     ProvisionedThroughput: {
+//         ReadCapacityUnits: 5,
+//         WriteCapacityUnits: 5,
+//     },
+//     TableName: tableName,
+// };
+// dynamodb.describeTable({ TableName: tableName }, (err, data) => {
+//     if(err && err.code === 'ResourceNotFoundException') {
+//         dynamodb.createTable(createTableParams, (err, data) => {
+//             if(err) {
+//                 console.error('Unable to create table');
+//             } else {
+//                 console.log('Created table');
+//                 const maSP = uuidv4();
+//                 const putItemParams = {
+//                     TableName: tableName,
+//                     Item: {
+//                       'maSP': { S: maSP },
+//                       'tenSP': { S: 'Nồi Cơm Điện Sunhouse' },
+//                       'soLuong': { N: '10' },
+//                       'donGia': { N: '8850000' },
+//                       'image': { S: 'https://phantantai-s3.s3.ap-southeast-1.amazonaws.com/IMG_2190.JPG' },
+//                     }
+//                 };
+//                 dynamodb.putItem(putItemParams, (err, data) => {
+//                     if (err) {
+//                       console.error('Unable to add item. Error JSON:', JSON.stringify(err, null, 2));
+//                     } else {
+//                       console.log('Added item. Item description JSON:', JSON.stringify(data, null, 2));
+//                     }
+//                 });
+//             }
+//         });
+//     } else {
+//         if (err) {
+//             console.error('Error describing table.');
+//         } else {
+//             console.log('Table already exists.');
+//         }
+//     }
+// });
 
 // dynamodb.deleteTable({TableName: tableName}, (err, data) => {
 //     if (err) {
@@ -102,25 +115,49 @@ app.get('/add', async(req, res) => {
     return res.render('add.ejs');
 });
 
-app.post('/add', async (req, res) => {
+app.post('/add', upload.single('image'), (req, res) => {
     try {
         const { tenSP, donGia, soLuong } = req.body;
+        const image = req.file.originalname.split('.');
+        const fileType = image[image.length-1];
         const maSP = uuidv4();
-        const params = {
-            TableName: tableName,
-            Item: {
-                maSP,
-                tenSP,
-                soLuong,
-                donGia,
+        const filePath = `${maSP + Date.now().toString()}.${fileType}`;
+        console.log('filePath=', filePath);
+        const paramsS3 = {
+            Bucket: 'phantantai-s3',
+            Key: filePath,
+            Body: req.file.buffer,
+            ContentType: req.file.mimetype,
+        }
+        s3.upload(paramsS3, async (err, data) => {
+            if(err) {
+                console.error('error=', err);
+                return res.send('Internal server error!');
+            } else {
+
+
+
+                const params = {
+                    TableName: tableName,
+                    Item: {
+                        maSP,
+                        tenSP,
+                        soLuong,
+                        donGia,
+                        image: `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.REGION}.amazonaws.com/${filePath}`,
+                    }
+                };
+                await docClient.put(params).promise();
+                return res.redirect('/');
+
+
+
             }
-        };
-        await docClient.put(params).promise();
+        });
     } catch (error) {
         console.error('Error putting data from DynamoDB:', error);
         return res.status(500).send('Internal Server Error');
     }
-    return res.redirect('/');
 });
 
 app.post('/delete', async (req, res) => {
@@ -155,3 +192,14 @@ app.post('/delete', async (req, res) => {
         return res.status(500).send('Internal Server Error');
     }
 });
+
+function checkFileType(file, cb) {
+    const fileTypes = /jpeg|jpg|png|gif/;
+
+    const extname = fileTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = fileTypes.test(file.mimetype);
+    if(extname && mimetype) {
+        return cb(null, true);
+    }
+    return cb('Error: Image Only Pls!');
+}
